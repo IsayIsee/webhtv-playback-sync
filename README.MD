@@ -16,3 +16,11 @@ TURSO_AUTH_TOKEN=你的Turso数据库访问令牌
 1. 克隆项目并进入根目录
 2. 执行 `npm install` 安装必要的依赖（`express`, `@libsql/client`, `dotenv`）
 3. 执行 `node index.js` 启动服务。
+
+## 🌍 Vercel 部署指南
+1. 在 Vercel 仪表盘创建一个新项目，连接到你的 GitHub 仓库。
+2. 在项目设置中添加以下环境变量：
+   - `APP_AUTH_TOKEN`: 自定义安全 Token 用于客户端认证
+   - `TURSO_DATABASE_URL`: turso 数据库连接 URL
+   - `TURSO_AUTH_TOKEN`: 你的Turso数据库访问令牌
+3. 部署项目，Vercel 会自动构建并发布你的服务。
