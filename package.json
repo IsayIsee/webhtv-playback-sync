@@ -1,0 +1,30 @@
+{
+  "name": "webhtv-playback-sync",
+  "version": "1.0.0",
+  "description": "FongMi 观影记录安全同步服务",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": [
+    "fongmi",
+    "webhook",
+    "playback",
+    "sync",
+    "turso",
+    "vercel"
+  ],
+  "author": "IsayIsee",
+  "license": "MIT",
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
