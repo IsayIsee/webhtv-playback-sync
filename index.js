@@ -113,7 +113,7 @@ app.use(async (req, res, next) => {
     }
 
     try {
-        const safeSql = `SELECT id FROM user_info WHERE token = ? AND expried_at > ? LIMIT 1`;
+        const safeSql = `SELECT id FROM user_info WHERE token = ? AND expired_at > ? LIMIT 1`;
 
         const result = await db.execute({
             sql: safeSql,
