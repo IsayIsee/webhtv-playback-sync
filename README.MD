@@ -1,15 +1,19 @@
 # WebHTV 播放进度云同步服务
 
-这是一个专门为 [WebHTV](https://github.com/fish2018/webhtv/) 定制的**播放进度多端同步后端服务**。项目采用 Node.js + Express 架构，底层依托高性能、零运维的 **Turso (LibSQL) 云数据库**，使用了[官方开发文档](https://github.com/fish2018/webhtv/blob/main/docs/%E5%BA%94%E7%94%A8%E5%AE%8C%E6%95%B4%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md)中的协议规范。
+这是一个专门为 [WebHTV](https://github.com/fish2018/webhtv/) 定制的**播放进度多端同步后端服务**。项目采用 Node.js + Express 架构，底层依托高性能、零运维的 **Turso (LibSQL) 云数据库**，使用了[官方开发文档](https://github.com/fish2018/webhtv/blob/main/webhome-devkit/docs/%E5%BA%94%E7%94%A8%E5%AE%8C%E6%95%B4%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md)中的协议规范。
 
 ## 🛠️ 环境环境变量配置 (.env)
 
 在项目根目录下创建 `.env` 文件（生产环境请直接在服务商后台配置对应的环境变量）：
 
 PORT=9980  
-APP_AUTH_TOKEN=自定义安全 Token 用于客户端认证  
+~~APP_AUTH_TOKEN=自定义安全 Token 用于客户端认证~~  
 TURSO_DATABASE_URL=libsql://你的库名-你的用户名.turso.io  
 TURSO_AUTH_TOKEN=你的Turso数据库访问令牌  
+
+## 💡 增加 Token
+1. 在 user_info 表中增加一个 Token, Token 默认过期时间为 1 年
+2. 客户端请求时需要将该 Token 作为请求头 `X-WebHTV-Token` 的值进行认证
 
 ## 📦 本地快速启动
 
@@ -19,8 +23,8 @@ TURSO_AUTH_TOKEN=你的Turso数据库访问令牌
 
 ## 🌍 Vercel 部署指南
 1. 在 Vercel 仪表盘创建一个新项目，连接到你的 GitHub 仓库。
-2. 在项目设置中添加以下环境变量：
-   - `APP_AUTH_TOKEN`: 自定义安全 Token 用于客户端认证
+2. 在项目设置中添加以下环境变量：  
+   - ~~`APP_AUTH_TOKEN`: 自定义安全 Token 用于客户端认证~~
    - `TURSO_DATABASE_URL`: turso 数据库连接 URL
    - `TURSO_AUTH_TOKEN`: 你的Turso数据库访问令牌
 3. 部署项目，Vercel 会自动构建并发布你的服务。

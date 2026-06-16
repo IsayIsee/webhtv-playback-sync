@@ -79,7 +79,7 @@ app.use((req, res, next) => {
 });
 
 // =========================================================================
-// 🛡️ 鉴权中心
+// 鉴权中心
 // =========================================================================
 app.use(async (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -113,11 +113,11 @@ app.use(async (req, res, next) => {
     }
 
     try {
-        const safeSql = `SELECT id FROM user_info WHERE token = ? LIMIT 1`;
+        const safeSql = `SELECT id FROM user_info WHERE token = ? AND expried_at > ? LIMIT 1`;
 
         const result = await db.execute({
             sql: safeSql,
-            args: [clientToken]
+            args: [clientToken, Date.now()]
         });
 
         const rawRows = result.rows || [];
