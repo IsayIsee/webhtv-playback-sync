@@ -207,7 +207,7 @@ app.get('/', async (req, res) => {
 });
 
 // =========================================================================
-// Webhook 接收端点(POST /api/webhook/playback)
+// Webhook 接收端点(POST /webhook/playback)
 // =========================================================================
 app.post('/webhook/playback', async (req, res) => {
     const body = req.body || {};
@@ -242,7 +242,7 @@ app.post('/webhook/playback', async (req, res) => {
                         siteKey=excluded.siteKey, siteName=excluded.siteName, vodId=excluded.vodId, vodName=excluded.vodName, 
                         vodPic=excluded.vodPic, flag=excluded.flag, episodeName=excluded.episodeName, state = excluded.state,
                         positionMs=excluded.positionMs, durationMs=excluded.durationMs, progress=excluded.progress, 
-                        speed=excluded.speed, completed=excluded.completed, appVersion=excluded.appVersion, client=excluded.client,
+                        speed=excluded.speed, completed=excluded.completed, key=excluded.key, appVersion=excluded.appVersion, client=excluded.client,
                         episodeUrl=excluded.episodeUrl, episodeIndex=excluded.episodeIndex, clientKey=excluded.clientKey`,
                 args: [
                     Number(res.locals.userId),
