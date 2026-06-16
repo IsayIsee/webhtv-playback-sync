@@ -7,7 +7,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 const app = express();
 const PORT = process.env.PORT || 9980;
-const APP_AUTH_TOKEN = process.env.APP_AUTH_TOKEN;
 
 const db = createClient({
     url: process.env.TURSO_DATABASE_URL,
@@ -82,32 +81,59 @@ app.use((req, res, next) => {
 // =========================================================================
 // 🛡️ 鉴权中心
 // =========================================================================
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sync-Token, X-WebHTV-Token, X-WebHTV-Config-Key, X-WebHTV-Config-Name');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-WebHTV-Token, X-WebHTV-Config-Key, X-WebHTV-Config-Name');
 
     if (req.method === 'OPTIONS') return res.sendStatus(204);
 
     const rawHeaders = req.headers;
     let clientToken = '';
-    const possibleKeys = ['x-webhtv-token', 'x-sync-token', 'authorization'];
+    const possibleKeys = ['x-webhtv-token', 'authorization'];
 
     for (const key of possibleKeys) {
-        if (rawHeaders[key]) { clientToken = String(rawHeaders[key]).trim(); break; }
-        if (rawHeaders[key.toUpperCase()]) { clientToken = String(rawHeaders[key.toUpperCase()]).trim(); break; }
+        if (rawHeaders[key]) {
+            clientToken = String(rawHeaders[key]).trim();
+            break;
+        }
+        if (rawHeaders[key.toUpperCase()]) {
+            clientToken = String(rawHeaders[key.toUpperCase()]).trim();
+            break;
+        }
     }
+
     if (!clientToken) {
         clientToken = req.query.token || req.query.X_WebHTV_Token || '';
         clientToken = String(clientToken).trim();
     }
 
-    const expectedToken = String(APP_AUTH_TOKEN).trim();
-    if (expectedToken && clientToken !== expectedToken) {
-        return res.status(401).json({ code: 401, message: "Unauthorized: Token Mismatch" });
+    if (!clientToken) {
+        return res.status(401).json({code: 401, message: "Unauthorized: Missing Token"});
     }
 
-    next();
+    try {
+        const safeSql = `SELECT id FROM user_info WHERE token = ? LIMIT 1`;
+
+        const result = await db.execute({
+            sql: safeSql,
+            args: [clientToken]
+        });
+
+        const rawRows = result.rows || [];
+
+        if (rawRows.length === 0) {
+            return res.status(401).json({code: 401, message: "Unauthorized: Invalid User Token"});
+        }
+
+        const user = rawRows[0];
+        res.locals.userId = user.id;
+
+        next();
+    } catch (error) {
+        console.error("Database auth error:", error);
+        return res.status(500).json({code: 500, message: "Internal Server Error during auth"});
+    }
 });
 
 // =========================================================================
@@ -121,93 +147,58 @@ app.get('/', async (req, res) => {
             SELECT 
                 'webhtv.playback.v1' as schema,
                 coalesce(event, '') as event,
-                eventId,
-                timestamp,
-                sessionId,
-                dedupeKey,
-                cid,
-                configKey,
-                configName,
-                historyKey,
-                siteKey,
-                siteName,
-                vodId,
-                vodName,
-                vodPic,
-                flag,
-                episodeName,
-                state,
-                positionMs,
-                durationMs,
-                progress,
-                speed,
-                completed,
-                key, 
-                appVersion,
-                client,
-                episodeUrl,
-                episodeIndex,
-                clientKey
+                eventId, timestamp, sessionId, dedupeKey, cid,
+                configKey, configName, historyKey, siteKey, siteName,
+                vodId, vodName, vodPic, flag, episodeName, state,
+                positionMs, durationMs, progress, speed, completed,
+                key, appVersion, client, episodeUrl, episodeIndex, clientKey
             FROM playback_history
-            WHERE configKey = '${configKey}'
+            WHERE configKey = ? and userId = ?
             ORDER BY timestamp DESC
         `;
 
-        const result = await db.execute(safeSql) || {};
+        const result = await db.execute({
+            sql: safeSql,
+            args: [configKey, Number(res.locals.userId)]
+        });
+
         const rawRows = result.rows || [];
 
         const sanitized = rawRows.map(r => {
-
-            // return {
-            //     schema: r.schema,
-            //     event: r.event,
-            //     eventId: r.eventId,
-            //     timestamp: r.timestamp,
-            //     sessionId: r.sessionId,
-            //     dedupeKey: r.dedupeKey,
-            //     cid: r.cid,
-            //     configKey: r.configKey,
-            //     configName: r.configName,
-            //     historyKey: r.historyKey,
-            //     siteKey: r.siteKey,
-            //     siteName: r.siteName,
-            //     vodId: r.vodId,
-            //     vodName: r.vodName,
-            //     vodPic: r.vodPic,
-            //     flag: r.flag,
-            //     episodeName: r.episodeName,
-            //     episodeUrl: r.episodeUrl,
-            //     state: r.state,
-            //     positionMs: r.positionMs,
-            //     durationMs: r.durationMs,
-            //     progress: r.progress,
-            //     speed: r.speed,
-            //     completed: !!r.completed,
-            //     updateAt: Date.now(),
-            //     client: r.client,
-            //     appVersion: r.appVersion,
-            //     clientKey: r.clientKey
-            // };
-
+            // 确保安全兼容 LibSQL/Turso 的行数据读取
             return {
-                configKey: r.configKey,
-                configName: r.configName,
-                siteKey: r.siteKey,
-                vodId: r.vodId,
-                vodName: r.vodName,
-                vodPic: r.vodPic,
-                flag: r.flag,
-                episodeName: r.episodeName,
-                episodeUrl: r.episodeUrl,
-                positionMs: r.positionMs,
-                durationMs: r.durationMs,
-                speed: r.speed,
+                schema: r.schema ?? 'webhtv.playback.v1',
+                event: r.event ?? '',
+                eventId: r.eventId ?? '',
+                timestamp: Number(r.timestamp) || Date.now(),
+                sessionId: r.sessionId ?? '',
+                dedupeKey: r.dedupeKey ?? '',
+                cid: Number(r.cid) || 0,
+                configKey: r.configKey ?? '',
+                configName: r.configName ?? '',
+                historyKey: r.historyKey ?? '',
+                siteKey: r.siteKey ?? '',
+                siteName: r.siteName ?? '',
+                vodId: r.vodId ?? '',
+                vodName: r.vodName ?? '',
+                vodPic: r.vodPic ?? '',
+                flag: r.flag ?? '',
+                episodeName: r.episodeName ?? '',
+                episodeUrl: r.episodeUrl ?? '',
+                state: r.state ?? '',
+                positionMs: Number(r.positionMs) || 0,
+                durationMs: Number(r.durationMs) || 0,
+                progress: Number(r.progress) || 0,
+                speed: Number(r.speed) || 1,
                 completed: !!r.completed,
-                updateAt: r.timestamp,
+                updateAt: Date.now(),
+                client: r.client ?? '',
+                appVersion: r.appVersion ?? '',
+                clientKey: r.clientKey ?? ''
             };
         });
 
-        res.status(200).json({"items":sanitized});
+        res.status(200).json({"items": sanitized});
 
     } catch (err) {
         console.error(`查库失败:`, err.message);
@@ -218,16 +209,15 @@ app.get('/', async (req, res) => {
 // =========================================================================
 // Webhook 接收端点(POST /api/webhook/playback)
 // =========================================================================
-app.post('/api/webhook/playback', async (req, res) => {
-    const configKey = req.headers['x-webhtv-config-key'] || '';
+app.post('/webhook/playback', async (req, res) => {
     const body = req.body || {};
 
-    // 转换为标准数组处理
     const items = Array.isArray(body)
         ? body
         : (Array.isArray(body.items) ? body.items : (Array.isArray(body.list) ? body.list : [body]));
 
-    const validItems = items.filter(item => item && (item.key || (item.siteKey && item.vodId)));
+    // 防止无效数据渗入
+    const validItems = items.filter(item => item && (item.siteKey && item.vodId));
 
     if (validItems.length === 0) {
         return res.status(400).json({ code: 400, message: "Bad Request: No valid data" });
@@ -235,81 +225,56 @@ app.post('/api/webhook/playback', async (req, res) => {
 
     try {
         const statements = validItems.map(item => {
-            if (!item.key) item.key = `${item.siteKey}_${item.vodId}`;
+            // 获取每个视频的唯一值
+            item.key = `${item.siteKey}_${item.vodId}`;
 
             return {
                 sql: `INSERT INTO playback_history (
-                    schema,
-                    event, 
-                    eventId,
-                    timestamp,
-                    sessionId,
-                    dedupeKey,
-                    cid,
-                    configKey,
-                    configName,
-                    historyKey,
-                    siteKey,
-                    siteName,
-                    vodId,
-                    vodName,
-                    vodPic,
-                    flag,
-                    episodeName,
-                    state,
-                    positionMs,
-                    durationMs,
-                    progress,
-                    speed,
-                    completed,
-                    key, 
-                    appVersion,
-                    client,
-                    episodeUrl,
-                    episodeIndex,
-                    clientKey
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(key) DO UPDATE SET
+                    userId, schema, event, eventId, timestamp, sessionId, dedupeKey, cid,
+                    configKey, configName, historyKey, siteKey, siteName, vodId, vodName, vodPic,
+                    flag, episodeName, state, positionMs, durationMs, progress, speed, completed,
+                    key, appVersion, client, episodeUrl, episodeIndex, clientKey
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(userId, key) DO UPDATE SET
                         schema=excluded.schema, event=excluded.event, eventId = excluded.eventId, 
                         timestamp=excluded.timestamp, sessionId=excluded.sessionId, dedupeKey=excluded.dedupeKey, cid=excluded.cid,
                         configKey=excluded.configKey, configName=excluded.configName, historyKey=excluded.historyKey, 
                         siteKey=excluded.siteKey, siteName=excluded.siteName, vodId=excluded.vodId, vodName=excluded.vodName, 
                         vodPic=excluded.vodPic, flag=excluded.flag, episodeName=excluded.episodeName, state = excluded.state,
                         positionMs=excluded.positionMs, durationMs=excluded.durationMs, progress=excluded.progress, 
-                        speed=excluded.speed, completed=excluded.completed, key=excluded.key, appVersion=excluded.appVersion, client=excluded.client,
+                        speed=excluded.speed, completed=excluded.completed, appVersion=excluded.appVersion, client=excluded.client,
                         episodeUrl=excluded.episodeUrl, episodeIndex=excluded.episodeIndex, clientKey=excluded.clientKey`,
                 args: [
-                    item.schema,
-                    item.event,
-                    item.eventId,
-                    item.timestamp || Date.now(),
-                    item.sessionId,
-                    item.dedupeKey,
-                    item.cid,
-                    item.configKey,
-                    item.configName,
-                    item.historyKey,
-                    item.siteKey,
-                    item.siteName,
-                    item.vodId,
+                    Number(res.locals.userId),
+                    item.schema ?? 'webhtv.playback.v1',
+                    item.event ?? '',
+                    item.eventId ?? '',
+                    Number(item.timestamp) || Date.now(),
+                    item.sessionId ?? '',
+                    item.dedupeKey ?? '',
+                    Number(item.cid) || 0,
+                    item.configKey ?? '',
+                    item.configName ?? '',
+                    item.historyKey ?? '',
+                    item.siteKey ?? '',
+                    item.siteName ?? '',
+                    item.vodId ?? '',
                     item.vodName || '未知视频',
                     item.vodPic || '',
-                    item.flag,
-                    item.episodeName,
-                    item.state,
-                    Number(item.positionMs) || 1000,
-                    Number(item.durationMs) || 1000,
-                    item.progress,
-                    item.speed,
+                    item.flag ?? '',
+                    item.episodeName ?? '',
+                    item.state ?? '',
+                    Number(item.positionMs) || 0,
+                    Number(item.durationMs) || 0,
+                    Number(item.progress) || 0,
+                    Number(item.speed) || 1,
                     item.completed ? 1 : 0,
                     item.key,
-                    // 标准字段
-                    item.appVersion || '',
-                    item.client || '',
-                    // 完整字段
-                    item.episodeUrl || '',
-                    item.episodeIndex || '',
-                    item.clientKey || ''
+                    item.appVersion ?? '',
+                    item.client ?? '',
+                    item.episodeUrl ?? '',
+                    item.episodeIndex ?? '',
+                    item.clientKey ?? ''
                 ]
             };
         });
@@ -324,9 +289,16 @@ app.post('/api/webhook/playback', async (req, res) => {
 
 app.use((req, res) => { res.status(404).json({ code: 404, message: "Not found" }); });
 
+// =========================================================================
+// 数据库初始化与安全迁移
+// =========================================================================
 async function initDB() {
     try {
         console.log(`正在连接到 Turso 数据库...`);
+
+        // 开启外键约束支持
+        await db.execute("PRAGMA foreign_keys = ON;");
+
         await db.execute(`
             CREATE TABLE IF NOT EXISTS schema_version (
                 id INTEGER PRIMARY KEY,
@@ -336,7 +308,19 @@ async function initDB() {
         `);
 
         await db.execute(`
+            CREATE TABLE IF NOT EXISTS user_info (
+                id INTEGER PRIMARY KEY,
+                token TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expired_at DATETIME DEFAULT (datetime('now', '+1 year')),
+                UNIQUE(token)
+            )
+        `);
+
+        await db.execute(`
             CREATE TABLE IF NOT EXISTS playback_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userId INTEGER REFERENCES user_info(id) ON DELETE CASCADE,
                 schema TEXT,
                 event TEXT, 
                 eventId TEXT,
@@ -358,43 +342,34 @@ async function initDB() {
                 positionMs INTEGER,
                 durationMs INTEGER,
                 progress INTEGER,
-                speed INTEGER,
+                speed REAL,
                 completed BOOLEAN NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-                key TEXT PRIMARY KEY, 
---              标准字段   
+                key TEXT, 
                 appVersion TEXT,
                 client TEXT,
---              完整字段
                 episodeUrl TEXT,
                 episodeIndex TEXT,
-                clientKey TEXT
+                clientKey TEXT,
+                UNIQUE(userId, key)
             )
         `);
 
-        // 获取当前数据库的 schema 版本
-        let currentVersion = 1; // 默认初始版本
+        let currentVersion = 1;
         const versionResult = await db.execute("SELECT version FROM schema_version WHERE id = 1");
 
         if (versionResult.rows.length === 0) {
-            // 如果是全新数据库，初始化版本为 1
             await db.execute("INSERT INTO schema_version (id, version) VALUES (1, 1)");
         } else {
             currentVersion = versionResult.rows[0].version;
         }
         console.log(`当前数据库 Schema 版本: v${currentVersion}`);
 
-        // ============================================================
-        // 数据库升级 (随着版本更迭在这里追加 else if)
-        // ============================================================
-        const TARGET_VERSION = 1; // 假设当前代码已经迭代到了 v3 需求
+        const TARGET_VERSION = 1;
 
         if (currentVersion < TARGET_VERSION) {
             console.log(`检测到代码有升级，正在将数据库从 v${currentVersion} 迁移至 v${TARGET_VERSION}...`);
-
-            // 基础事务容器：确保升级过程要么全成功，要么全回滚，不污染数据库
             const migrationTasks = [];
 
-            // 升级到 v2：假设未来 App 增加了“设备名称 (deviceName)”字段
             if (currentVersion < 2) {
                 migrationTasks.push({
                     sql: "ALTER TABLE playback_history ADD COLUMN deviceName TEXT DEFAULT 'Unknown'",
@@ -402,25 +377,11 @@ async function initDB() {
                 });
             }
 
-            // 升级到 v3：假设未来 App 增加了“是否收藏 (isFavorite)”和“主页自定义排序 (customOrder)”
-            if (currentVersion < 3) {
-                migrationTasks.push({
-                    sql: "ALTER TABLE playback_history ADD COLUMN isFavorite INTEGER DEFAULT 0",
-                    args: []
-                });
-                migrationTasks.push({
-                    sql: "ALTER TABLE playback_history ADD COLUMN customOrder INTEGER DEFAULT 0",
-                    args: []
-                });
-            }
-
-            // 更新系统版本号标记
             migrationTasks.push({
                 sql: "UPDATE schema_version SET version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
                 args: [TARGET_VERSION]
             });
 
-            // 利用 Turso 的 db.batch 完美执行原子化迁移
             await db.batch(migrationTasks, "write");
             console.log(`数据库成功升级至 v${TARGET_VERSION}！`);
         } else {
